@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris Game</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #121212;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            height: 100vh;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            border: 3px solid #ff4444;
+            background-color: #1c1c1c;
+            box-shadow: 0 0 10px #ff4444, 0 0 40px #ff4444;
+        }
+
+        .score-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 200px;
+            height: 50px;
+            margin: 10px 0;
+            border: 2px solid #ffcc00;
+            border-radius: 10px;
+            box-shadow: 0 0 10px #ffcc00;
+            background-color: #1c1c1c;
+        }
+
+        .score {
+            font-size: 24px;
+            color: #ffcc00;
+            text-shadow: 0 0 10px #ffcc00;
+        }
+
+        .start-button {
+            padding: 10px 20px;
+            margin: 20px 0;
+            background-color: #ff4444;
+            color: white;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            text-shadow: 0 0 10px #ffcc00;
+            box-shadow: 0 0 20px #ff4444;
+        }
+
+        .start-button:hover {
+            background-color: #ffcc00;
+            color: #121212;
+            text-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="score-container">
+            <div class="score">Score: <span id="score">0</span></div>
+        </div>
+        <canvas id="gameCanvas" width="300" height="600"></canvas>
+        <button class="start-button" id="startButton">Start Game</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+
+        const BLOCK_SIZE = 30;
+        const ROWS = 20;
+        const COLS = 10;
+        const COLORS = [
+            null, 'cyan', 'yellow', 'purple', 'orange', 'blue', 'green', 'red'
+        ];
+
+        let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+        let score = 0;
+        let gameOver = false;
+        let gameInterval;
+
+        const SHAPES = [
+            [[1, 1, 1, 1]],
+            [[1, 1], [1, 1]],
+            [[0, 1, 0], [1, 1, 1]],
+            [[1, 0, 0], [1, 1, 1]],
+            [[0, 0, 1], [1, 1, 1]],
+            [[0, 1, 1], [1, 1, 0]],
+            [[1, 1, 0], [0, 1, 1]]
+        ];
+
+        class Piece {
+            constructor(shape) {
+                this.shape = shape;
+                this.color = COLORS[SHAPES.indexOf(shape) + 1];
+                this.x = Math.floor(COLS / 2) - Math.ceil(shape[0].length / 2);
+                this.y = 0;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                this.shape.forEach((row, i) => {
+                    row.forEach((cell, j) => {
+                        if (cell) {
+                            ctx.fillRect((this.x + j) * BLOCK_SIZE, (this.y + i) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                        }
+                    });
+                });
+            }
+
+            move(dir) {
+                this.x += dir;
+                if (this.collision()) this.x -= dir;
+            }
+
+            drop() {
+                this.y++;
+                if (this.collision()) {
+                    this.y--;
+                    this.merge();
+                    newPiece();
+                }
+            }
+
+            rotate() {
+                const prevShape = this.shape;
+                this.shape = this.shape[0].map((_, i) => this.shape.map(row => row[i]).reverse());
+                if (this.collision()) this.shape = prevShape;
+            }
+
+            collision() {
+                return this.shape.some((row, i) => {
+                    return row.some((cell, j) => {
+                        if (cell) {
+                            const newX = this.x + j;
+                            const newY = this.y + i;
+                            return (
+                                newX < 0 ||
+                                newX >= COLS ||
+                                newY >= ROWS ||
+                                grid[newY]?.[newX]
+                            );
+                        }
+                        return false;
+                    });
+                });
+            }
+
+            merge() {
+                this.shape.forEach((row, i) => {
+                    row.forEach((cell, j) => {
+                        if (cell) {
+                            grid[this.y + i][this.x + j] = COLORS.indexOf(this.color);
+                        }
+                    });
+                });
+                clearRows();
+            }
+        }
+
+        function clearRows() {
+            grid = grid.filter(row => row.some(cell => !cell));
+            const clearedRows = ROWS - grid.length;
+            while (grid.length < ROWS) {
+                grid.unshift(Array(COLS).fill(0));
+            }
+            score += clearedRows * 10;
+            document.getElementById('score').textContent = score;
+        }
+
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            grid.forEach((row, y) => {
+                row.forEach((cell, x) => {
+                    if (cell) {
+                        ctx.fillStyle = COLORS[cell];
+                        ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                    }
+                });
+            });
+        }
+
+        let currentPiece;
+
+        function newPiece() {
+            currentPiece = new Piece(SHAPES[Math.floor(Math.random() * SHAPES.length)]);
+            if (currentPiece.collision()) {
+                gameOver = true;
+                clearInterval(gameInterval);
+                alert('Game Over!');
+            }
+        }
+
+        function update() {
+            if (!gameOver) {
+                currentPiece.drop();
+                drawGrid();
+                currentPiece.draw();
+            }
+        }
+
+        document.addEventListener('keydown', event => {
+            if (!gameOver) {
+                if (event.key === 'ArrowLeft') currentPiece.move(-1);
+                if (event.key === 'ArrowRight') currentPiece.move(1);
+                if (event.key === 'ArrowDown') currentPiece.drop();
+                if (event.key === 'ArrowUp') currentPiece.rotate();
+            }
+        });
+
+        startButton.addEventListener('click', () => {
+            startButton.style.display = 'none';
+            newPiece();
+            gameInterval = setInterval(update, 500);
+        });
+    </script>
+</body>
+</html>
